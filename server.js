@@ -9,7 +9,29 @@ dotenv.config();
 
 const app = express();
 
-app.use(cors());
+// ========================================================
+// 🛡️ KONFIGURASI CORS (DIJAMIN LOLOS BLOKIR VERCEL)
+// ========================================================
+const allowedOrigins = [
+  "http://localhost:3000",
+  "http://localhost:5173", // Port default Vite lokal
+  "https://billiard-nu.vercel.app" // 👈 Mengizinkan domain Vercel kamu secara resmi
+];
+
+app.use(cors({
+  origin: function (origin, callback) {
+    // Mengizinkan request tanpa origin (seperti aplikasi mobile atau Postman) atau jika origin terdaftar
+    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error("Akses ditolak oleh aturan keamanan CORS backend!"));
+    }
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"]
+}));
+
 app.use(express.json());
 
 // ========================================================
@@ -30,7 +52,7 @@ app.get("/api/kasir/reservasi", async (req, res) => {
       .select("*")
       .order("waktuDibuat", { ascending: false });
     
-    if (error) return res.status(500).json({ success: false, message: error.message });
+    if (error) return res.status(400).json({ success: false, message: error.message });
     return res.json({ success: true, data });
   } catch (err) {
     return res.status(500).json({ success: false, message: "Gagal mengambil data dari database" });
@@ -73,7 +95,7 @@ app.post("/api/kasir/start/:id", async (req, res) => {
     // Format jam menit biasa untuk kolom jamMulai ("17:30")
     const waktuJamMenit = new Date().toLocaleTimeString("id-ID", { hour: '2-digit', minute: '2-digit' });
     
-    // 💡 SOLUSI AMAN: Menggunakan format string YYYY-MM-DD HH:MM:SS yang dicintai PostgreSQL/Supabase
+    // Format string YYYY-MM-DD HH:MM:SS untuk PostgreSQL/Supabase
     const waktuSQL = new Date().toISOString().slice(0, 19).replace('T', ' ');
 
     const { data, error } = await supabase
@@ -81,7 +103,7 @@ app.post("/api/kasir/start/:id", async (req, res) => {
       .update({ 
         statusPemesanan: "Playing", 
         jamMulai: waktuJamMenit,        
-        start_time: waktuSQL // Menggunakan format yang ramah database
+        start_time: waktuSQL
       })
       .eq("id", id)
       .select();
@@ -98,14 +120,14 @@ app.post("/api/kasir/stop/:id", async (req, res) => {
   try {
     const { id } = req.params;
     
-    // 💡 SOLUSI AMAN: Format string timestamp standar SQL
+    // Format string timestamp standar SQL
     const waktuSQL = new Date().toISOString().slice(0, 19).replace('T', ' ');
 
     const { data, error } = await supabase
       .from("reservasi")
       .update({ 
         statusPemesanan: "Selesai",
-        end_time: waktuSQL // Menggunakan format yang ramah database
+        end_time: waktuSQL
       })
       .eq("id", id)
       .select();
@@ -153,7 +175,7 @@ Tarif/Jam  : Rp ${hargaPerJam.toLocaleString("id-ID")}
 TOTAL      : Rp ${totalBayar.toLocaleString("id-ID")}
 Status     : ${pesanan.statusPemesanan || "Selesai"}
 ${stripLine}
-     TERIMA KASIH ATAS KUNJUNGANNYA 
+       TERIMA KASIH ATAS KUNJUNGANNYA 
 ${stripLine}`;
 
     return res.json({ 
@@ -176,5 +198,5 @@ app.get("/test-db", async (req, res) => {
 
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {
-  console.log(`🚀 Server berjalan di http://localhost:${PORT}`);
+  console.log(`🚀 Server berjalan di port ${PORT}`);
 });
