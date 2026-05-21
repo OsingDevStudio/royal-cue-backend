@@ -10,27 +10,53 @@ dotenv.config();
 const app = express();
 
 // ========================================================
-// 🛡️ KONFIGURASI CORS (DIJAMIN LOLOS BLOKIR VERCEL)
+// 🛡️ KONFIGURASI CORS (FIXED - Mengizinkan Vercel)
 // ========================================================
 const allowedOrigins = [
   "http://localhost:3000",
-  "http://localhost:5173", // Port default Vite lokal
-  "https://billiard-nu.vercel.app" // 👈 Mengizinkan domain Vercel kamu secara resmi
+  "http://localhost:5173",
+  "http://localhost:5174",
+  "https://billiard-nu.vercel.app",      // ⭐ Domain Vercel Anda
+  "https://billiard-nu.vercel.app",      // ⭐ Pastikan ini ada
+  "https://*.vercel.app"                  // ⭐ Izinkan semua subdomain Vercel
 ];
 
+// Middleware CORS yang lebih robust
 app.use(cors({
   origin: function (origin, callback) {
-    // Mengizinkan request tanpa origin (seperti aplikasi mobile atau Postman) atau jika origin terdaftar
-    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
-      callback(null, true);
-    } else {
-      callback(new Error("Akses ditolak oleh aturan keamanan CORS backend!"));
+    // Log untuk debugging (akan terlihat di log Render)
+    console.log("🔍 Incoming origin:", origin);
+    
+    // Izinkan request tanpa origin (Postman, mobile app, dll)
+    if (!origin) {
+      console.log("✅ No origin (allowed)");
+      return callback(null, true);
     }
+    
+    // Cek apakah origin ada di allowedOrigins
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      console.log("✅ Origin allowed (exact match):", origin);
+      return callback(null, true);
+    }
+    
+    // Cek apakah origin berakhiran .vercel.app
+    if (origin.endsWith('.vercel.app')) {
+      console.log("✅ Origin allowed (vercel.app):", origin);
+      return callback(null, true);
+    }
+    
+    // Jika tidak ada yang cocok, blokir
+    console.log("❌ CORS blocked:", origin);
+    callback(new Error(`Akses ditolak oleh aturan keamanan CORS backend! Origin ${origin} tidak diizinkan`));
   },
   credentials: true,
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"]
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept"],
+  exposedHeaders: ["Content-Length", "X-Kuma-Revision"]
 }));
+
+// Handle preflight requests secara manual (tambahan untuk keamanan)
+app.options('*', cors());
 
 app.use(express.json());
 
@@ -52,9 +78,13 @@ app.get("/api/kasir/reservasi", async (req, res) => {
       .select("*")
       .order("waktuDibuat", { ascending: false });
     
-    if (error) return res.status(400).json({ success: false, message: error.message });
+    if (error) {
+      console.error("Error fetching reservations:", error);
+      return res.status(400).json({ success: false, message: error.message });
+    }
     return res.json({ success: true, data });
   } catch (err) {
+    console.error("Error in /api/kasir/reservasi:", err);
     return res.status(500).json({ success: false, message: "Gagal mengambil data dari database" });
   }
 });
@@ -62,6 +92,8 @@ app.get("/api/kasir/reservasi", async (req, res) => {
 /* 2. Terima Pesanan Baru dari Pelanggan (Menghitung Total Otomatis) */
 app.post("/api/reservasi", async (req, res) => {
   try {
+    console.log("📥 Received reservation request:", req.body);
+    
     const dataIncoming = req.body;
     const namaMeja = dataIncoming.nomorMeja || dataIncoming.meja || "";
     const durasi = parseInt(dataIncoming.durasiBermain || dataIncoming.durasi) || 1;
@@ -80,10 +112,16 @@ app.post("/api/reservasi", async (req, res) => {
       .insert([dataPesanan])
       .select();
 
-    if (error) return res.status(400).json({ success: false, message: error.message });
+    if (error) {
+      console.error("Supabase insert error:", error);
+      return res.status(400).json({ success: false, message: error.message });
+    }
+    
+    console.log("✅ Reservation saved successfully:", data);
     return res.status(201).json({ success: true, data });
   } catch (err) {
-    return res.status(500).json({ success: false, message: "Gagal memproses pesanan baru" });
+    console.error("Error in /api/reservasi:", err);
+    return res.status(500).json({ success: false, message: "Gagal memproses pesanan baru: " + err.message });
   }
 });
 
@@ -91,6 +129,7 @@ app.post("/api/reservasi", async (req, res) => {
 app.post("/api/kasir/start/:id", async (req, res) => {
   try {
     const { id } = req.params;
+    console.log("🎮 Starting game for reservation:", id);
     
     // Format jam menit biasa untuk kolom jamMulai ("17:30")
     const waktuJamMenit = new Date().toLocaleTimeString("id-ID", { hour: '2-digit', minute: '2-digit' });
@@ -108,9 +147,15 @@ app.post("/api/kasir/start/:id", async (req, res) => {
       .eq("id", id)
       .select();
 
-    if (error) return res.status(400).json({ success: false, message: error.message });
+    if (error) {
+      console.error("Error starting game:", error);
+      return res.status(400).json({ success: false, message: error.message });
+    }
+    
+    console.log("✅ Game started successfully");
     return res.json({ success: true, message: "Meja biliar berhasil dimulai!", data });
   } catch (err) {
+    console.error("Error in /api/kasir/start/:id:", err);
     return res.status(500).json({ success: false, message: "Gagal memproses aksi Start" });
   }
 });
@@ -119,6 +164,7 @@ app.post("/api/kasir/start/:id", async (req, res) => {
 app.post("/api/kasir/stop/:id", async (req, res) => {
   try {
     const { id } = req.params;
+    console.log("🛑 Stopping game for reservation:", id);
     
     // Format string timestamp standar SQL
     const waktuSQL = new Date().toISOString().slice(0, 19).replace('T', ' ');
@@ -132,9 +178,15 @@ app.post("/api/kasir/stop/:id", async (req, res) => {
       .eq("id", id)
       .select();
 
-    if (error) return res.status(400).json({ success: false, message: error.message });
+    if (error) {
+      console.error("Error stopping game:", error);
+      return res.status(400).json({ success: false, message: error.message });
+    }
+    
+    console.log("✅ Game stopped successfully");
     return res.json({ success: true, message: "Meja biliar berhasil dihentikan!", data });
   } catch (err) {
+    console.error("Error in /api/kasir/stop/:id:", err);
     return res.status(500).json({ success: false, message: "Gagal memproses aksi Stop" });
   }
 });
@@ -143,6 +195,7 @@ app.post("/api/kasir/stop/:id", async (req, res) => {
 app.post("/api/kasir/print/:id", async (req, res) => {
   try {
     const { id } = req.params;
+    console.log("🖨️ Printing receipt for reservation:", id);
 
     const { data: pesanan, error } = await supabase
       .from("reservasi")
@@ -151,6 +204,7 @@ app.post("/api/kasir/print/:id", async (req, res) => {
       .maybeSingle();
 
     if (error || !pesanan) {
+      console.error("Reservation not found:", id);
       return res.status(404).json({ success: false, message: "Data billing tidak ditemukan" });
     }
 
@@ -178,12 +232,14 @@ ${stripLine}
        TERIMA KASIH ATAS KUNJUNGANNYA 
 ${stripLine}`;
 
+    console.log("✅ Receipt generated successfully");
     return res.json({ 
       success: true, 
       message: "Struk berhasil digenerate!", 
       data: strukNota 
     });
   } catch (err) {
+    console.error("Error in /api/kasir/print/:id:", err);
     return res.status(500).json({ success: false, message: "Gagal memproses print struk" });
   }
 });
@@ -192,11 +248,33 @@ ${stripLine}`;
 // 🛠️ ROUTE TEST DATABASE & RUNNING PORT
 // ========================================================
 app.get("/test-db", async (req, res) => {
+  console.log("🔍 Testing database connection...");
   const { data, error } = await supabase.from("users").select("*");
+  if (error) {
+    console.error("Database test error:", error);
+  } else {
+    console.log("✅ Database connected, users count:", data?.length || 0);
+  }
   res.json({ data, error });
+});
+
+// Root endpoint untuk cek server
+app.get("/", (req, res) => {
+  res.json({ 
+    message: "Royal Cue Backend API is running!", 
+    status: "active",
+    endpoints: {
+      auth: "/api/auth/login",
+      reservations: "/api/reservasi",
+      kasir: "/api/kasir/reservasi",
+      test: "/test-db"
+    }
+  });
 });
 
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {
   console.log(`🚀 Server berjalan di port ${PORT}`);
+  console.log(`📍 CORS enabled for:`, allowedOrigins);
+  console.log(`🌐 Test URL: http://localhost:${PORT}/test-db`);
 });
