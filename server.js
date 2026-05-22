@@ -10,7 +10,7 @@ dotenv.config();
 const app = express();
 
 // ========================================================
-// 🛡️ KONFIGURASI CORS (LENGKAP - SUPPORT VERCEL)
+// 🛡️ KONFIGURASI CORS (LENGKAP - SUPPORT VERCEL & RAILWAY)
 // ========================================================
 const allowedOrigins = [
   "http://localhost:3000",
@@ -21,13 +21,14 @@ const allowedOrigins = [
   "https://billiard-nu.vercel.app",
   "https://billiard-nu.vercel.app",
   "https://*.vercel.app",
-  "https://*.vercel.app"
+  "https://*.vercel.app",
+  "https://royal-cue-backend.up.railway.app"
 ];
 
 // Middleware CORS yang lengkap
 app.use(cors({
   origin: function (origin, callback) {
-    // Log untuk debugging di Render
+    // Log untuk debugging
     console.log("🔍 [CORS] Incoming origin:", origin);
     
     // Izinkan request tanpa origin (Postman, mobile app, dll)
@@ -45,6 +46,12 @@ app.use(cors({
     // Cek apakah origin berakhiran .vercel.app
     if (origin.endsWith('.vercel.app')) {
       console.log("✅ [CORS] Origin allowed (vercel.app):", origin);
+      return callback(null, true);
+    }
+    
+    // Cek apakah origin berakhiran .railway.app
+    if (origin.endsWith('.railway.app')) {
+      console.log("✅ [CORS] Origin allowed (railway.app):", origin);
       return callback(null, true);
     }
     
@@ -384,16 +391,18 @@ app.use((err, req, res, next) => {
 });
 
 // ========================================================
-// 🚀 START SERVER
+// 🚀 START SERVER - DIPERBAIKI UNTUK RAILWAY
 // ========================================================
 const PORT = process.env.PORT || 4000;
-app.listen(PORT, () => {
+
+// ⚠️ PERUBAHAN PENTING: Gunakan '0.0.0.0' untuk Railway!
+app.listen(PORT, '0.0.0.0', () => {
   console.log("=".repeat(50));
   console.log(`🚀 Royal Cue Backend Server`);
   console.log("=".repeat(50));
   console.log(`📡 Port: ${PORT}`);
-  console.log(`🌐 URL: http://localhost:${PORT}`);
-  console.log(`🔗 Production: https://royal-cue-backend.onrender.com`);
+  console.log(`🌐 Local URL: http://localhost:${PORT}`);
+  console.log(`🔗 Production URL: https://royal-cue-backend.up.railway.app`);
   console.log("-".repeat(50));
   console.log(`✅ CORS enabled for origins:`);
   allowedOrigins.forEach(origin => console.log(`   - ${origin}`));
@@ -408,4 +417,5 @@ app.listen(PORT, () => {
   console.log(`   POST /api/kasir/stop/:id`);
   console.log(`   POST /api/kasir/print/:id`);
   console.log("=".repeat(50));
+  console.log(`✅ Server is ready to accept connections!`);
 });
